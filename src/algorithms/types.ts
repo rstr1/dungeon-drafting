@@ -71,7 +71,7 @@ export function hexCorners(hex: HexCoord, outerRadius: number): { x: number; y: 
         const angleRadians = (Math.PI / 180) * 60 * i
         corners.push({
             x: centre.x + outerRadius * Math.cos(angleRadians),
-            y: centre.y + outerRadius * Math.cos(angleRadians),
+            y: centre.y + outerRadius * Math.sin(angleRadians),
         })
     }
     return corners
