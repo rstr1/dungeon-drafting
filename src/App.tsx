@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { ALGORITHMS } from './algorithms/registry'
-import type { DungeonMap, Algorithm } from './algorithms/types'
+import type { DungeonMap, Algorithm, RoomTemplate } from './algorithms/types'
 import HexGrid from './components/Hexgrid'
+import { exportConfig, importConfig } from './lib/persistence'
 
 function buildDefaultParams(algorithm: Algorithm): Record<string, number | boolean> {
   return Object.fromEntries(algorithm.params.map(p => [p.key, p.default]))
@@ -9,6 +10,29 @@ function buildDefaultParams(algorithm: Algorithm): Record<string, number | boole
 
 const DEFAULT_FILL_COLOUR = '#30220c'
 const DEFAULT_LINE_COLOUR = '#eff1f3'
+
+//---------------------------------------//
+//  Room Templates                       //
+//---------------------------------------//
+const DEFAULT_ROOM_TEMPLATES: RoomTemplate[] = [
+  {
+    id: 'spawn-cell',
+    name: 'Spawn Cell',
+    tag: 'spawn',
+    cells: [{ q: 0, r: 0 }],
+    entrances: [{ q: 0, r: 0 }],
+    guaranteed: true,
+  },
+  {
+    id: 'exit-cell',
+    name: 'Exit Cell',
+    tag: 'exit',
+    cells: [{ q: 0, r: 0 }],
+    entrances: [{ q: 0, r: 0 }],
+    guaranteed: true,
+  },
+]
+
 
 //---------------------------------------//
 //  App Function                         //
@@ -29,6 +53,9 @@ export default function App() {
   const [fillColour, setFillColour] = useState(DEFAULT_FILL_COLOUR)
   const [lineColour, setLineColour] = useState(DEFAULT_LINE_COLOUR)
 
+  const [roomTemplates, setRoomTemplates] = useState<RoomTemplate[]>(DEFAULT_ROOM_TEMPLATES)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const handleAlgorithmChange = useCallback((id: string) => {
     const next = ALGORITHMS.find(a => a.id === id)!
     const defaults = buildDefaultParams(next)
@@ -44,7 +71,7 @@ export default function App() {
     []
   )
 
-  const handleRandomizeSeed = useCallback(
+  const handleRandomiseSeed = useCallback(
     (param: Extract<Algorithm['params'][number], { type: 'number' }>) => {
       const value = Math.floor(Math.random() * (param.max - param.min + 1)) + param.min
       setParams(prev => ({ ...prev, [param.key]: value }))
@@ -56,6 +83,31 @@ export default function App() {
     setDungeon(algorithm.generate(params))
   }, [algorithm, params])
 
+  const handleExport = useCallback(() => {
+    exportConfig({
+      algorithmId: selectedId,
+      params,
+      colours: { fill: fillColour, line: lineColour },
+      roomTemplates,
+    })
+  }, [selectedId, params, fillColour, lineColour, roomTemplates])
+
+  const handleImportFile = useCallback(async (file: File) => {
+    try {
+      const config = await importConfig(file)
+      const next = ALGORITHMS.find(a => a.id === config.algorithmId)
+      if (next) {
+        setSelectedId(next.id)
+        setParams(config.params)
+        setDungeon(next.generate(config.params))
+      }
+      setFillColour(config.colours.fill)
+      setLineColour(config.colours.line)
+      setRoomTemplates(config.roomTemplates)
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to import preset.')
+    }
+  }, [])
 
   //---------------------------------------//
   //  Return Function                      //
@@ -116,7 +168,7 @@ export default function App() {
                   <button
                     type="button"
                     style={styles.randomizeButton}
-                    onClick={() => handleRandomizeSeed(param)}
+                    onClick={() => handleRandomiseSeed(param)}
                     title="Randomise seed"
                   >
                     🎲
@@ -164,6 +216,30 @@ export default function App() {
               style={styles.colourInput}
             />
           </div>
+        </section>
+
+        {/* Preset save/load */}
+        <section style={styles.section}>
+          <label style={styles.label}>Preset</label>
+          <div style={styles.presetRow}>
+            <button type="button" style={styles.secondaryButton} onClick={handleExport}>
+              Export JSON
+            </button>
+            <button type="button" style={styles.secondaryButton} onClick={() => fileInputRef.current?.click()}>
+              Import JSON
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="application/json"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const file = e.target.files?.[0]
+              if (file) handleImportFile(file)
+              e.target.value = ''
+            }}
+          />
         </section>
 
         <button style={styles.button} onClick={handleGenerate}>

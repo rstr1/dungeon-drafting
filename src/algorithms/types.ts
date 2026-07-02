@@ -33,6 +33,10 @@ export function hexFromKey(key: string): HexCoord {
     return { q, r }
 }
 
+//---------------------------------------//
+//  Neighbour Functions                  //
+//---------------------------------------//
+
 // Get HexCoords for neighbouring cells
 export function hexNeighbour(hex: HexCoord, direction: number): HexCoord {
     const dir = HEX_DIRECTIONS[direction % 6]
@@ -43,6 +47,39 @@ export function hexNeighbour(hex: HexCoord, direction: number): HexCoord {
 export function hexNeighbours(hex: HexCoord): HexCoord[] {
     return HEX_DIRECTIONS.map((_, i) => hexNeighbour(hex, i))
 }
+
+//---------------------------------------//
+//  Rotation Functions                   //
+//---------------------------------------//
+
+// Rotate a hex coordinate around the origin in 60-degree increments
+export function rotateHex(hex: HexCoord, steps: number): HexCoord {
+    const n = ((steps % 6) + 6) % 6
+    let q = hex.q
+    let r = hex.r
+    let s = -q -r
+    for (let i = 0; i < n; i++) {
+        const nq = -s
+        const nr = -q
+        const ns = -r
+        q = nq; r = nr; s = ns
+    }
+    return { q, r }
+}
+
+// Rotate every hex in a structure around a given anchor cell
+// (default anchor: origin)
+export function rotateStructure(cells: HexCoord[], steps: number, anchor: HexCoord = { q: 0, r: 0 }): HexCoord[] {
+    return cells.map(c => {
+        const relative = { q: c.q - anchor.q, r: c.r - anchor.r }
+        const rotated = rotateHex(relative, steps)
+        return { q: rotated.q + anchor.q, r: rotated.r + anchor.r }
+    })
+}
+
+//---------------------------------------//
+//  Distance Functions                   //
+//---------------------------------------//
 
 // Manhattan distance between hexes
 export function hexDistance(a: HexCoord, b: HexCoord): number {
@@ -109,4 +146,33 @@ export type Algorithm = {
     description: string
     params: ParamDefinition[]
     generate: (params: Record<string, number | boolean>) => DungeonMap
+}
+
+//---------------------------------------//
+//  Room Templates                       //
+//---------------------------------------//
+
+// Built-in categories for prefabbed rooms
+export type RoomTag = 'spawn' | 'exit' | 'large' | 'small' | 'gambler' | 'custom'
+
+// Prefabbed room shape (defined relative to [0, 0])
+export type RoomTemplate = {
+    id: string
+    name: string
+    tag: RoomTag
+    cells: HexCoord[]       // structure/shape of room
+    entrances: HexCoord[]   // attachment points
+    guaranteed: boolean     // must always be placed
+    maxCount?: number       // cap out on # of this room template
+    weight?: number         // for skewing spawn chances
+}
+
+// Template placed in the world
+export type RoomInstance = {
+    templateId: string
+    tag: RoomTag
+    anchor: HexCoord
+    rotation: number        // 0-5 * 60 degree turns
+    cells: HexCoord[]       // world-space cells
+    entrances: HexCoord[]   // world-space doorways
 }
