@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import { ALGORITHMS } from './algorithms/registry'
 import type { DungeonMap, Algorithm, RoomTemplate } from './algorithms/types'
-import HexGrid from './components/Hexgrid'
+import HexGrid from './components/hexgrid'
 import { exportConfig, importConfig } from './lib/persistence'
 
 function buildDefaultParams(algorithm: Algorithm): Record<string, number | boolean> {
