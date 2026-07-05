@@ -38,7 +38,7 @@ export const DEFAULT_PALETTE: Palette = {
     exit: '#e69b39',
     large: '#eec643',
     small: '#d1ff03',
-    gambler: '#dd4e4e',
+    event: '#dd4e4e',
     custom: '#ffffff',
   },
 }

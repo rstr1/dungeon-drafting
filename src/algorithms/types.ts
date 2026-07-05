@@ -126,6 +126,8 @@ export type DungeonMap = {
     metadata?: {
         rooms?: { id: string; cells: HexCoord[] }[]
         connections?: [HexCoord, HexCoord]
+        totalCellBudget?: number
+        numLevels?: number
     }
 }
 
@@ -153,7 +155,7 @@ export type Algorithm = {
 //---------------------------------------//
 
 // Built-in categories for prefabbed rooms
-export type RoomTag = 'spawn' | 'exit' | 'large' | 'small' | 'gambler' | 'custom'
+export type RoomTag = 'spawn' | 'exit' | 'large' | 'small' | 'event' | 'custom'
 
 // Prefabbed room shape (defined relative to [0, 0])
 export type RoomTemplate = {

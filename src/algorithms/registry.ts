@@ -1,5 +1,6 @@
 import type { Algorithm } from "./types";
 import { drunkardWalk } from "./drunkardWalk";
+import { billyGen } from "./billyGen";
 
 //---------------------------------------//
 //  Algorithm Registry                   //
@@ -11,5 +12,6 @@ import { drunkardWalk } from "./drunkardWalk";
 //      3. add to array
 
 export const ALGORITHMS: Algorithm[] = [
+    billyGen,
     drunkardWalk,
 ]

@@ -141,45 +141,63 @@ export default function App() {
           <p style={styles.description}>{algorithm.description}</p>
         </section>
 
+        {/* Seed + Generate */}
+        <section style={styles.section}>
+          <label style={styles.label}>Seed</label>
+          {(() => {
+            const seedParam = algorithm.params.find(
+              (p): p is Extract<Algorithm['params'][number], { type: 'number' }> =>
+                p.key === 'seed' && p.type === 'number'
+            )
+            if (!seedParam) return null
+            return (
+              <div style={styles.seedRow}>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={String(params[seedParam.key])}
+                  onChange={e => {
+                    const digitsOnly = e.target.value.replace(/[^0-9]/g, '')
+                    if (digitsOnly === '') {
+                      handleParamChange(seedParam.key, 0)
+                      return
+                    }
+                    const clamped = Math.min(seedParam.max, Math.max(seedParam.min, Number(digitsOnly)))
+                    handleParamChange(seedParam.key, clamped)
+                  }}
+                  style={styles.seedInput}
+                />
+                <button
+                  type="button"
+                  style={styles.randomizeButton}
+                  onClick={() => handleRandomiseSeed(seedParam)}
+                  title="Randomise seed"
+                >
+                  🎲
+                </button>
+              </div>
+            )
+          })()}
+          <button style={styles.button} onClick={handleGenerate}>
+            Generate
+          </button>
+        </section>
+
         {/* Parameter panel */}
         <section style={styles.section}>
           <label style={styles.label}>Parameters</label>
-          {algorithm.params.map(param => (
+          {algorithm.params
+            .filter(param => param.key !== 'seed')
+            .map(param => (
             <div key={param.key} style={styles.paramRow}>
               <div style={styles.paramHeader}>
                 <span style={styles.paramLabel}>{param.label}</span>
-                {param.type === 'number' && param.key !== 'seed' && (
+                {param.type === 'number' && (
                   <span style={styles.paramValue}>{params[param.key]}</span>
                 )}
               </div>
-              {param.type === 'number' && param.key === 'seed' ? (
-                <div style={styles.seedRow}>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={String(params[param.key])}
-                    onChange={e => {
-                      const digitsOnly = e.target.value.replace(/[^0-9]/g, '')
-                      if (digitsOnly === '') {
-                        handleParamChange(param.key, 0)
-                        return
-                      }
-                      const clamped = Math.min(param.max, Math.max(param.min, Number(digitsOnly)))
-                      handleParamChange(param.key, clamped)
-                    }}
-                    style={styles.seedInput}
-                  />
-                  <button
-                    type="button"
-                    style={styles.randomizeButton}
-                    onClick={() => handleRandomiseSeed(param)}
-                    title="Randomise seed"
-                  >
-                    🎲
-                  </button>
-                </div>
-              ) : param.type === 'number' ? (
+              {param.type === 'number' ? (
                 <input
                   type="range"
                   min={param.min}
@@ -246,10 +264,6 @@ export default function App() {
             }}
           />
         </section>
-
-        <button style={styles.button} onClick={handleGenerate}>
-          Generate
-        </button>
       </aside>
 
       {/* Canvas */}
@@ -268,9 +282,14 @@ export default function App() {
 //---------------------------------------//
 //  Styles                               //
 //---------------------------------------//
-// Colours here are sourced from src/lib/palette.ts (DEFAULT_PALETTE)
+// Need to link up to tailwind or smth
+// All colours here are sourced from src/lib/palette.ts (DEFAULT_PALETTE)
+// so the sidebar UI, the hex renderer, and exported presets all agree
+// on a single set of values.
 
 function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
+  const sidebarButtonColour = palette.background
+
   return {
     root: {
       display: 'flex',
@@ -319,7 +338,7 @@ function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
       margin: 0,
     },
     select: {
-      background: palette.background,
+      background: sidebarButtonColour,
       color: palette.textPrimary,
       border: `1px solid ${palette.border}`,
       borderRadius: '4px',
@@ -357,7 +376,7 @@ function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
     },
     seedInput: {
       flex: 1,
-      background: palette.background,
+      background: sidebarButtonColour,
       color: palette.textPrimary,
       border: `1px solid ${palette.border}`,
       borderRadius: '4px',
@@ -366,7 +385,7 @@ function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
       fontFamily: 'monospace',
     },
     randomizeButton: {
-      background: palette.background,
+      background: sidebarButtonColour,
       border: `1px solid ${palette.border}`,
       borderRadius: '4px',
       padding: '4px 8px',
@@ -396,7 +415,7 @@ function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
     secondaryButton: {
       flex: 1,
       padding: '8px',
-      background: palette.background,
+      background: sidebarButtonColour,
       color: palette.textPrimary,
       border: `1px solid ${palette.border}`,
       borderRadius: '4px',
@@ -406,7 +425,6 @@ function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
       letterSpacing: '0.03em',
     },
     button: {
-      marginTop: 'auto',
       padding: '10px',
       background: palette.accent,
       color: '#fff',
