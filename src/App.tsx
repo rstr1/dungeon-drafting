@@ -3,13 +3,11 @@ import { ALGORITHMS } from './algorithms/registry'
 import type { DungeonMap, Algorithm, RoomTemplate } from './algorithms/types'
 import HexGrid from './components/hexgrid'
 import { exportConfig, importConfig } from './lib/persistence'
+import { type Palette, DEFAULT_PALETTE, clonePalette } from './lib/palette'
 
 function buildDefaultParams(algorithm: Algorithm): Record<string, number | boolean> {
   return Object.fromEntries(algorithm.params.map(p => [p.key, p.default]))
 }
-
-const DEFAULT_FILL_COLOUR = '#30220c'
-const DEFAULT_LINE_COLOUR = '#eff1f3'
 
 //---------------------------------------//
 //  Room Templates                       //
@@ -50,8 +48,14 @@ export default function App() {
     algorithm.generate(buildDefaultParams(algorithm))
   )
 
-  const [fillColour, setFillColour] = useState(DEFAULT_FILL_COLOUR)
-  const [lineColour, setLineColour] = useState(DEFAULT_LINE_COLOUR)
+  const [palette, setPalette] = useState<Palette>(() => clonePalette(DEFAULT_PALETTE))
+
+  const handlePaletteChange = useCallback(
+    (key: keyof Omit<Palette, 'roomTagColours'>, value: string) => {
+      setPalette(prev => ({ ...prev, [key]: value }))
+    },
+    []
+  )
 
   const [roomTemplates, setRoomTemplates] = useState<RoomTemplate[]>(DEFAULT_ROOM_TEMPLATES)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -87,10 +91,10 @@ export default function App() {
     exportConfig({
       algorithmId: selectedId,
       params,
-      colours: { fill: fillColour, line: lineColour },
+      palette,
       roomTemplates,
     })
-  }, [selectedId, params, fillColour, lineColour, roomTemplates])
+  }, [selectedId, params, palette, roomTemplates])
 
   const handleImportFile = useCallback(async (file: File) => {
     try {
@@ -101,13 +105,14 @@ export default function App() {
         setParams(config.params)
         setDungeon(next.generate(config.params))
       }
-      setFillColour(config.colours.fill)
-      setLineColour(config.colours.line)
+      setPalette(clonePalette(config.palette))
       setRoomTemplates(config.roomTemplates)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to import preset.')
     }
   }, [])
+
+  const styles = buildStyles(palette)
 
   //---------------------------------------//
   //  Return Function                      //
@@ -202,8 +207,8 @@ export default function App() {
             <span style={styles.paramLabel}>Fill</span>
             <input
               type="color"
-              value={fillColour}
-              onChange={e => setFillColour(e.target.value)}
+              value={palette.hexFill}
+              onChange={e => handlePaletteChange('hexFill', e.target.value)}
               style={styles.colourInput}
             />
           </div>
@@ -211,8 +216,8 @@ export default function App() {
             <span style={styles.paramLabel}>Lines</span>
             <input
               type="color"
-              value={lineColour}
-              onChange={e => setLineColour(e.target.value)}
+              value={palette.hexOutline}
+              onChange={e => handlePaletteChange('hexOutline', e.target.value)}
               style={styles.colourInput}
             />
           </div>
@@ -249,7 +254,12 @@ export default function App() {
 
       {/* Canvas */}
       <main style={styles.canvas}>
-        <HexGrid dungeon={dungeon} fillColour={fillColour} lineColour={lineColour} />
+        <HexGrid
+          dungeon={dungeon}
+          fillColour={palette.hexFill}
+          lineColour={palette.hexOutline}
+          backgroundColour={palette.background}
+        />
       </main>
     </div>
   )
@@ -258,146 +268,158 @@ export default function App() {
 //---------------------------------------//
 //  Styles                               //
 //---------------------------------------//
-// Need to link up to tailwind or smth
+// Colours here are sourced from src/lib/palette.ts (DEFAULT_PALETTE)
 
-const ACCENT_COLOUR = "#e6880f"
-const SIDEBAR_BACKGROUND_COLOUR = "#1a150e"
-const BACKGROUND_COLOUR = "#0f0d09"
-const SIDEBAR_BUTTON_COLOUR = BACKGROUND_COLOUR
-const BORDER_COLOUR = "#3e352a"
-
-const styles: Record<string, React.CSSProperties> = {
-  root: {
-    display: 'flex',
-    height: '100vh',
-    width: '100vw',
-    background: BACKGROUND_COLOUR,
-    color: '#e2e8f0',
-    fontFamily: 'monospace',
-    overflow: 'hidden',
-  },
-  sidebar: {
-    width: '260px',
-    minWidth: '260px',
-    background: SIDEBAR_BACKGROUND_COLOUR,
-    padding: '24px 16px',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    overflowY: 'auto',
-    borderRight: `1px solid ${BORDER_COLOUR}`,
-  },
-  title: {
-    fontSize: '18px',
-    fontWeight: 700,
-    color: ACCENT_COLOUR,
-    margin: '0 0 16px 0',
-    letterSpacing: '0.05em',
-  },
-  section: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '8px',
-    marginBottom: '16px',
-  },
-  label: {
-    fontSize: '11px',
-    fontWeight: 600,
-    letterSpacing: '0.1em',
-    color: '#64748b',
-    textTransform: 'uppercase',
-  },
-  description: {
-    fontSize: '12px',
-    color: '#64748b',
-    lineHeight: 1.5,
-    margin: 0,
-  },
-  select: {
-    background: SIDEBAR_BUTTON_COLOUR,
-    color: '#e2e8f0',
-    border: `1px solid ${BORDER_COLOUR}`,
-    borderRadius: '4px',
-    padding: '6px 8px',
-    fontSize: '13px',
-    cursor: 'pointer',
-  },
-  paramRow: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '4px',
-  },
-  paramHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  paramLabel: {
-    fontSize: '13px',
-    color: '#cbd5e1',
-  },
-  paramValue: {
-    fontSize: '12px',
-    color: ACCENT_COLOUR,
-    fontVariantNumeric: 'tabular-nums',
-  },
-  slider: {
-    width: '100%',
-    accentColor: ACCENT_COLOUR,
-  },
-  seedRow: {
-    display: 'flex',
-    gap: '8px',
-    alignItems: 'center',
-  },
-  seedInput: {
-    flex: 1,
-    background: SIDEBAR_BUTTON_COLOUR,
-    color: '#e2e8f0',
-    border: `1px solid ${BORDER_COLOUR}`,
-    borderRadius: '4px',
-    padding: '6px 8px',
-    fontSize: '13px',
-    fontFamily: 'monospace',
-  },
-  randomizeButton: {
-    background: SIDEBAR_BUTTON_COLOUR,
-    border: `1px solid ${BORDER_COLOUR}`,
-    borderRadius: '4px',
-    padding: '4px 8px',
-    fontSize: '14px',
-    cursor: 'pointer',
-    lineHeight: 1,
-  },
-  colourRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '4px',
-  },
-  colourInput: {
-    width: '36px',
-    height: '24px',
-    padding: 0,
-    border: `1px solid ${BORDER_COLOUR}`,
-    borderRadius: '4px',
-    background: 'transparent',
-    cursor: 'pointer',
-  },
-  button: {
-    marginTop: 'auto',
-    padding: '10px',
-    background: ACCENT_COLOUR,
-    color: '#fff',
-    border: 'none',
-    borderRadius: '4px',
-    fontSize: '14px',
-    fontWeight: 600,
-    cursor: 'pointer',
-    letterSpacing: '0.05em',
-  },
-  canvas: {
-    flex: 1,
-    overflow: 'hidden',
-  },
+function buildStyles(palette: Palette): Record<string, React.CSSProperties> {
+  return {
+    root: {
+      display: 'flex',
+      height: '100vh',
+      width: '100vw',
+      background: palette.background,
+      color: palette.textPrimary,
+      fontFamily: 'monospace',
+      overflow: 'hidden',
+    },
+    sidebar: {
+      width: '260px',
+      minWidth: '260px',
+      background: palette.sidebarBackground,
+      padding: '24px 16px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      overflowY: 'auto',
+      borderRight: `1px solid ${palette.border}`,
+    },
+    title: {
+      fontSize: '18px',
+      fontWeight: 700,
+      color: palette.accent,
+      margin: '0 0 16px 0',
+      letterSpacing: '0.05em',
+    },
+    section: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '8px',
+      marginBottom: '16px',
+    },
+    label: {
+      fontSize: '11px',
+      fontWeight: 600,
+      letterSpacing: '0.1em',
+      color: palette.textMuted,
+      textTransform: 'uppercase',
+    },
+    description: {
+      fontSize: '12px',
+      color: palette.textMuted,
+      lineHeight: 1.5,
+      margin: 0,
+    },
+    select: {
+      background: palette.background,
+      color: palette.textPrimary,
+      border: `1px solid ${palette.border}`,
+      borderRadius: '4px',
+      padding: '6px 8px',
+      fontSize: '13px',
+      cursor: 'pointer',
+    },
+    paramRow: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '4px',
+    },
+    paramHeader: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    paramLabel: {
+      fontSize: '13px',
+      color: palette.textPrimary,
+    },
+    paramValue: {
+      fontSize: '12px',
+      color: palette.accent,
+      fontVariantNumeric: 'tabular-nums',
+    },
+    slider: {
+      width: '100%',
+      accentColor: palette.accent,
+    },
+    seedRow: {
+      display: 'flex',
+      gap: '8px',
+      alignItems: 'center',
+    },
+    seedInput: {
+      flex: 1,
+      background: palette.background,
+      color: palette.textPrimary,
+      border: `1px solid ${palette.border}`,
+      borderRadius: '4px',
+      padding: '6px 8px',
+      fontSize: '13px',
+      fontFamily: 'monospace',
+    },
+    randomizeButton: {
+      background: palette.background,
+      border: `1px solid ${palette.border}`,
+      borderRadius: '4px',
+      padding: '4px 8px',
+      fontSize: '14px',
+      cursor: 'pointer',
+      lineHeight: 1,
+    },
+    colourRow: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: '4px',
+    },
+    colourInput: {
+      width: '36px',
+      height: '24px',
+      padding: 0,
+      border: `1px solid ${palette.border}`,
+      borderRadius: '4px',
+      background: 'transparent',
+      cursor: 'pointer',
+    },
+    presetRow: {
+      display: 'flex',
+      gap: '8px',
+    },
+    secondaryButton: {
+      flex: 1,
+      padding: '8px',
+      background: palette.background,
+      color: palette.textPrimary,
+      border: `1px solid ${palette.border}`,
+      borderRadius: '4px',
+      fontSize: '12px',
+      fontWeight: 600,
+      cursor: 'pointer',
+      letterSpacing: '0.03em',
+    },
+    button: {
+      marginTop: 'auto',
+      padding: '10px',
+      background: palette.accent,
+      color: '#fff',
+      border: 'none',
+      borderRadius: '4px',
+      fontSize: '14px',
+      fontWeight: 600,
+      cursor: 'pointer',
+      letterSpacing: '0.05em',
+    },
+    canvas: {
+      flex: 1,
+      overflow: 'hidden',
+    },
+  }
 }

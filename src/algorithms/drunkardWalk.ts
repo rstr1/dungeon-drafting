@@ -32,9 +32,9 @@ export const drunkardWalk: Algorithm = {
       label: 'Cell Count',
       type: 'number',
       min: 10,
-      max: 200,
+      max: 1000,
       step: 1,
-      default: 30,
+      default: 50,
     },
     {
       key: 'seed',

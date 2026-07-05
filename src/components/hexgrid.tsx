@@ -2,21 +2,19 @@ import { useEffect, useRef } from 'react'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { type DungeonMap, hexToPixel, hexCorners, hexFromKey } from '../algorithms/types'
+import { DEFAULT_PALETTE } from '../lib/palette'
 
 type HexGridProps = {
   dungeon: DungeonMap
   outerRadius?: number
   fillColour?: string
   lineColour?: string
+  backgroundColour?: string
 }
 
 //---------------------------------------//
 //  Constants                            //
 //---------------------------------------//
-
-const COLOUR_BG              = "#0f0d09"
-const DEFAULT_HEX_FILL       = "#192526"
-const DEFAULT_HEX_OUTLINE    = "#eff1f3"
 
 const DEFAULT_OUTER_RADIUS = 32
 const SIDEBAR_WIDTH = 260
@@ -31,8 +29,9 @@ const CAMERA_FOV = 40
 export default function HexGrid({
   dungeon,
   outerRadius = DEFAULT_OUTER_RADIUS,
-  fillColour = DEFAULT_HEX_FILL,
-  lineColour = DEFAULT_HEX_OUTLINE,
+  fillColour = DEFAULT_PALETTE.hexFill,
+  lineColour = DEFAULT_PALETTE.hexOutline,
+  backgroundColour = DEFAULT_PALETTE.background,
 }: HexGridProps) {
   const containerRef  = useRef<HTMLDivElement>(null)
   const rendererRef   = useRef<THREE.WebGLRenderer | null>(null)
@@ -53,7 +52,7 @@ export default function HexGrid({
     const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(window.devicePixelRatio)
     renderer.setSize(width, height)
-    renderer.setClearColor(COLOUR_BG)
+    renderer.setClearColor(backgroundColour)
     container.appendChild(renderer.domElement)
     rendererRef.current = renderer
 
@@ -105,9 +104,10 @@ export default function HexGrid({
     const renderer = rendererRef.current
     const camera = cameraRef.current
     if (!scene || !renderer || !camera) return
+    renderer.setClearColor(backgroundColour)
     drawDungeon(scene, dungeon, outerRadius, fillColour, lineColour)
     renderer.render(scene, camera)
-  }, [dungeon, outerRadius, fillColour, lineColour])
+  }, [dungeon, outerRadius, fillColour, lineColour, backgroundColour])
 
   return (
     <div

@@ -1,27 +1,17 @@
 import type { RoomTemplate } from '../algorithms/types'
+import type { Palette } from './palette'
 
 // Snapshot of everything required to reproduce a dungeon
 export type ProjectConfig = {
-    version: 1
     algorithmId: string
     params: Record<string, number | boolean>
-    colours: {
-        fill: string
-        line: string
-    }
+    palette: Palette
     roomTemplates: RoomTemplate[]
 }
 
-const CURRENT_VERSION = 1
-
-function serialiseConfig(config: Omit<ProjectConfig, 'version'>): ProjectConfig {
-    return { version: CURRENT_VERSION, ...config }
-}
-
-// Browser download for config as JSON file
-export function exportConfig(config: Omit<ProjectConfig, 'version'>, filename = 'dungeon-drafting-preset.json') {
-    const payload = serialiseConfig(config)
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+// Download for config as JSON file
+export function exportConfig(config: ProjectConfig, filename = 'dungeon-drafting-preset.json') {
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -53,7 +43,7 @@ function isProjectConfig(value: unknown): value is ProjectConfig {
   return (
     typeof v.algorithmId    === 'string' &&
     typeof v.params         === 'object' &&     v.params !== null &&
-    typeof v.colours        === 'object' &&     v.colours !== null &&
+    typeof v.palette        === 'object' &&     v.palette !== null &&
     Array.isArray(v.roomTemplates)
   )
 }
