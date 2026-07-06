@@ -6,6 +6,7 @@ export type ProjectConfig = {
     algorithmId: string
     params: Record<string, number | boolean>
     palette: Palette
+    wallHeightFraction: number
     roomTemplates: RoomTemplate[]
 }
 
@@ -41,9 +42,10 @@ function isProjectConfig(value: unknown): value is ProjectConfig {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
   return (
-    typeof v.algorithmId    === 'string' &&
-    typeof v.params         === 'object' &&     v.params !== null &&
-    typeof v.palette        === 'object' &&     v.palette !== null &&
+    typeof v.algorithmId         === 'string' &&
+    typeof v.params              === 'object' &&     v.params !== null &&
+    typeof v.palette             === 'object' &&     v.palette !== null &&
+    typeof v.wallHeightFraction  === 'number' &&
     Array.isArray(v.roomTemplates)
   )
 }

@@ -6,7 +6,7 @@ import type { RoomTag } from '../algorithms/types'
 // Holds colour values
 
 export type Palette = {
-  // UI chrome
+  // UI
   background: string          // app background / canvas clear colour
   sidebarBackground: string
   border: string
@@ -17,6 +17,7 @@ export type Palette = {
   // Hex renderer defaults
   hexFill: string
   hexOutline: string
+  wallColour: string
 
   // Per-tag room colours (used once room-tag-aware rendering lands)
   roomTagColours: Record<RoomTag, string>
@@ -30,14 +31,15 @@ export const DEFAULT_PALETTE: Palette = {
   textPrimary: '#e2e8f0',
   textMuted: '#64748b',
 
-  hexFill: '#30220c',
+  hexFill: '#302b25',
   hexOutline: '#eff1f3',
+  wallColour: '#24211e',
 
   roomTagColours: {
     spawn: '#3ddcdc',
     exit: '#e69b39',
-    large: '#eec643',
-    small: '#d1ff03',
+    large: '#999999',
+    small: '#575757',
     event: '#dd4e4e',
     custom: '#ffffff',
   },

@@ -115,6 +115,60 @@ export function hexCorners(hex: HexCoord, outerRadius: number): { x: number; y: 
 }
 
 //---------------------------------------//
+//  Edge System                          //
+//---------------------------------------//
+
+// HexEdge holds references to its parent HexCell and its direction
+export type HexEdge = {
+    cell: HexCoord
+    direction: number
+}
+
+// String key for an edge.
+export function edgeKey(edge: HexEdge): string {
+    return `${hexKey(edge.cell)}|${edge.direction}`
+}
+
+// Rotate a set of edges around an anchor cell
+export function rotateEdges(edges: HexEdge[], steps: number, anchor: HexCoord = { q: 0, r: 0 }): HexEdge[] {
+    const n = ((steps % 6) + 6) % 6
+    return edges.map(e => ({
+        cell: rotateStructure([e.cell], n, anchor)[0],
+        direction: (e.direction + n) % 6,
+    }))
+}
+
+// The two corner points shared by a cell and its neighbour in a given direction.
+export function hexEdgeCorners(
+    hex: HexCoord,
+    direction: number,
+    outerRadius: number
+): [{ x: number; y: number }, { x: number; y: number }] {
+    const centre = hexToPixel(hex, outerRadius)
+    const corners = hexCorners(hex, outerRadius)
+    const dir = HEX_DIRECTIONS[((direction % 6) + 6) % 6]
+    const dirVec = hexToPixel(dir, outerRadius)
+    const dirAngle = Math.atan2(dirVec.y, dirVec.x)
+
+    let bestIdx = 0
+    let bestDiff = Infinity
+    for (let i = 0; i < 6; i++) {
+        const a = corners[i]
+        const b = corners[(i + 1) % 6]
+        const midX = (a.x + b.x) / 2 - centre.x
+        const midY = (a.y + b.y) / 2 - centre.y
+        const edgeAngle = Math.atan2(midY, midX)
+        let diff = Math.abs(edgeAngle - dirAngle)
+        if (diff > Math.PI) diff = 2 * Math.PI - diff
+        if (diff < bestDiff) {
+            bestDiff = diff
+            bestIdx = i
+        }
+    }
+    return [corners[bestIdx], corners[(bestIdx + 1) % 6]]
+}
+
+//---------------------------------------//
 //  Dungeon System                       //
 //---------------------------------------//
 
@@ -124,9 +178,9 @@ export function hexCorners(hex: HexCoord, outerRadius: number): { x: number; y: 
 export type DungeonMap = {
     cells: Set<string>
     metadata?: {
-        rooms?: { id: string; cells: HexCoord[] }[]
+        rooms?: { id: string; tag?: RoomTag; cells: HexCoord[]; entrances?: HexEdge[] }[]
         connections?: [HexCoord, HexCoord]
-        totalCellBudget?: number
+        optionalRoomCount?: number
         numLevels?: number
     }
 }
@@ -147,7 +201,7 @@ export type Algorithm = {
     name: string
     description: string
     params: ParamDefinition[]
-    generate: (params: Record<string, number | boolean>) => DungeonMap
+    generate: (params: Record<string, number | boolean>, roomTemplates?: RoomTemplate[]) => DungeonMap
 }
 
 //---------------------------------------//
@@ -163,8 +217,9 @@ export type RoomTemplate = {
     name: string
     tag: RoomTag
     cells: HexCoord[]       // structure/shape of room
-    entrances: HexCoord[]   // attachment points
+    entrances: HexEdge[]    // open walls / attachment points
     guaranteed: boolean     // must always be placed
+    minCount?: number       // floor on # of this room template
     maxCount?: number       // cap out on # of this room template
     weight?: number         // for skewing spawn chances
 }
@@ -176,5 +231,5 @@ export type RoomInstance = {
     anchor: HexCoord
     rotation: number        // 0-5 * 60 degree turns
     cells: HexCoord[]       // world-space cells
-    entrances: HexCoord[]   // world-space doorways
+    entrances: HexEdge[]    // world-space open walls
 }
