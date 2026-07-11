@@ -351,6 +351,12 @@ function drawDungeon(
     }
   }
 
+  // Corridor tunnels (Step B): organic worm/metaball outlines from the
+  // algorithm layer, generated in unit-hex-radius space -- scaled here by
+  // the live outerRadius so they land in the same pixel space as the hex
+  // mesh above.
+  drawCorridors(scene, dungeon, outerRadius, centerX, centerY, getFillMat, fillColour, wallMat, strokeMat, wallHeight)
+
   // Ghost cells --> faint, clickable placeholders for cells not yet in the room
   for (const hex of ghostCells ?? []) {
     if (occupiedKeys.has(hexKey(hex))) continue
@@ -375,5 +381,84 @@ function drawDungeon(
     )
     line.userData['isDungeonHex'] = true
     scene.add(line)
+  }
+}
+
+//---------------------------------------//
+//  Draw Corridors Function              //
+//---------------------------------------//
+
+// Renders each corridor tunnel outline (metadata.corridors, from Step B's
+// worm/metaball generation) as a filled floor + a perimeter wall, in
+// continuous space -- independent of hex cell boundaries.
+//
+// Known rough edge: this doesn't attempt a proper boolean merge with the
+// room hex mesh at the junction. The worm path starts exactly at the
+// room's entrance cell, so the tunnel end overlaps the room there, but the
+// two meshes' wall lines won't line up perfectly -- acceptable for now,
+// worth revisiting if it looks wrong once actually rendered.
+function drawCorridors(
+  scene: THREE.Scene,
+  dungeon: DungeonMap,
+  outerRadius: number,
+  centerX: number,
+  centerY: number,
+  getFillMat: (colour: string) => THREE.MeshBasicMaterial,
+  fillColour: string,
+  wallMat: THREE.MeshBasicMaterial,
+  strokeMat: THREE.LineBasicMaterial,
+  wallHeight: number,
+) {
+  for (const polygon of dungeon.metadata?.corridors ?? []) {
+    if (polygon.length < 3) continue
+
+    // Corridor points are generated in unit-hex-radius space (see
+    // corridorFill.ts) -- scale by the live outerRadius so they land in the
+    // same pixel space as hexToPixel(hex, outerRadius) above, then apply
+    // the same centering offset as the hex mesh.
+    const pts = polygon.map(p => ({ x: p.x * outerRadius - centerX, z: p.y * outerRadius - centerY }))
+
+    // Filled floor (XZ plane), same construction as a hex floor tile.
+    const shape = new THREE.Shape()
+    shape.moveTo(pts[0].x, pts[0].z)
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z)
+    shape.closePath()
+    const fillGeo = new THREE.ShapeGeometry(shape)
+    const fillMesh = new THREE.Mesh(fillGeo, getFillMat(fillColour))
+    fillMesh.rotation.x = Math.PI / 2
+    fillMesh.userData['isDungeonHex'] = true
+    scene.add(fillMesh)
+
+    // Outline
+    const linePoints = [...pts, pts[0]].map(p => new THREE.Vector3(p.x, 0, p.z))
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), strokeMat)
+    line.userData['isDungeonHex'] = true
+    scene.add(line)
+
+    // Perimeter wall, batched into ONE mesh for the whole loop rather than
+    // one mesh per boundary edge -- these outlines can have 500-1500+
+    // points, and a separate THREE.Mesh per edge at that count would tank
+    // frame rate. One buffer, many triangles, is cheap; many mesh objects
+    // is not.
+    const wallVerts: number[] = []
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[i]
+      const b = pts[(i + 1) % pts.length]
+      wallVerts.push(
+        a.x, 0, a.z,
+        b.x, 0, b.z,
+        b.x, wallHeight, b.z,
+
+        a.x, 0, a.z,
+        b.x, wallHeight, b.z,
+        a.x, wallHeight, a.z,
+      )
+    }
+    const wallGeo = new THREE.BufferGeometry()
+    wallGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(wallVerts), 3))
+    wallGeo.computeVertexNormals()
+    const wallMesh = new THREE.Mesh(wallGeo, wallMat)
+    wallMesh.userData['isDungeonHex'] = true
+    scene.add(wallMesh)
   }
 }

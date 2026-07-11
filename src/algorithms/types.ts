@@ -168,23 +168,6 @@ export function hexEdgeCorners(
     return [corners[bestIdx], corners[(bestIdx + 1) % 6]]
 }
 
-//---------------------------------------//
-//  Dungeon System                       //
-//---------------------------------------//
-
-// Dungeon map --> metadata to define rooms and hallways
-// This is what gets rendered.
-// Every algorithm implementation should output one of these
-export type DungeonMap = {
-    cells: Set<string>
-    metadata?: {
-        rooms?: { id: string; tag?: RoomTag; cells: HexCoord[]; entrances?: HexEdge[] }[]
-        connections?: [HexCoord, HexCoord]
-        optionalRoomCount?: number
-        numLevels?: number
-    }
-}
-
 
 //---------------------------------------//
 //  Algorithms                           //
@@ -244,4 +227,30 @@ export type Connection = {
     b: number
     entranceA: HexEdge
     entranceB: HexEdge
+}
+
+//---------------------------------------//
+//  Continuous-space geometry            //
+//---------------------------------------//
+// XZ-plane point in the same pixel space as hexToPixel (unit hex radius).
+// Used by connectinonGraph.ts and marchingSquares.ts
+export type Point2D = { x: number; y: number }
+
+
+//---------------------------------------//
+//  Dungeon System                       //
+//---------------------------------------//
+
+// Dungeon map --> metadata to define rooms and hallways
+// This is what gets rendered.
+// Every algorithm implementation should output one of these
+export type DungeonMap = {
+    cells: Set<string>
+    metadata?: {
+        rooms?: { id: string; tag?: RoomTag; cells: HexCoord[]; entrances?: HexEdge[] }[]
+        connections?: Connection[]
+        corridors?: Point2D[][]
+        optionalRoomCount?: number
+        numLevels?: number
+    }
 }

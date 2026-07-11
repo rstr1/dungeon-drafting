@@ -3,6 +3,7 @@ import type { Algorithm, DungeonMap, HexCoord, HexEdge, RoomTag, RoomTemplate, R
 import { rng } from '../lib/rng'
 import { ANCHOR, placeTemplate, overlaps, tryPlaceAtRandom, pickWeighted, resolveTemplates } from './roomPlacement'
 import { buildConnectionGraph } from '../lib/connectionGraph'
+import { carveCorridors } from '../lib/corridorFill'
 
 //---------------------------------------//
 //  Stage 0: Universal Constants         //
@@ -111,6 +112,7 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
         consecutiveFailures++
       }
     }
+  }
 
     //---------------------------------------//
     //  Room <---> Room Connections          //
@@ -118,13 +120,13 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
     // Delaunay --> MST --> loop edges
     const connections = buildConnectionGraph(rooms, rand)
 
-
-
-  }
+    // Organic tunnel outlines: worm walk + metaball union + marching squares
+    // Continuous space independent of hex boundaries
+    const corridors = carveCorridors(connections, rand)
 
   return {
     cells: occupied,
-    metadata: { rooms, optionalRoomCount, numLevels },
+    metadata: { rooms, connections, corridors, optionalRoomCount, numLevels },
   }
 }
 
