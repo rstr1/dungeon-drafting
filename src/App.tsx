@@ -72,12 +72,6 @@ export default function App() {
     algorithm.generate(buildDefaultParams(algorithm), roomTemplates)
   )
 
-  useEffect(() => {
-    console.log('rooms:', dungeon.metadata?.rooms?.length)
-    console.log('connections:', dungeon.metadata?.connections?.length)
-    console.log('corridors:', dungeon.metadata?.corridors?.length)
-  }, [dungeon])
-
   const [palette, setPalette] = useState<Palette>(() => clonePalette(DEFAULT_PALETTE))
   const [wallHeightFraction, setWallHeightFraction] = useState(0.5)
 

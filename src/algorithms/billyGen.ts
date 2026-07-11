@@ -122,7 +122,7 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
 
     // Organic tunnel outlines: worm walk + metaball union + marching squares
     // Continuous space independent of hex boundaries
-    const corridors = carveCorridors(connections, rand)
+    const corridors = carveCorridors(rooms, connections, rand)
 
   return {
     cells: occupied,

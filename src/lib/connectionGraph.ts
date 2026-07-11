@@ -1,5 +1,5 @@
 import Delaunator from 'delaunator'
-import { hexToPixel } from '../algorithms/types'
+import { hexToPixel, hexEdgeMidpoint } from '../algorithms/types'
 import type { HexCoord, HexEdge, Connection } from '../algorithms/types'
 
 //---------------------------------------//
@@ -36,19 +36,18 @@ function dist(a: { x: number; y: number }, b: { x: number; y: number }): number 
 }
 
 // Picks entrance that is closest to a target point --> i.e. entrance that faces the room it's connecting to.
-function nearestEntrance(node: Node, target: { x: number; y: number}): HexEdge {
-    let best = node.entrances[0]
-    let bestDist = Infinity
-    for (const e of node.entrances) {
-        const d = dist(hexToPixel(e.cell, TRIANGULATION_RADIUS), target)
-        if (d < bestDist) {
-            bestDist = d
-            best = e
-        }
+function nearestEntrance(node: Node, target: { x: number; y: number }): HexEdge {
+  let best = node.entrances[0]
+  let bestDist = Infinity
+  for (const e of node.entrances) {
+    const d = dist(hexEdgeMidpoint(e, TRIANGULATION_RADIUS), target)
+    if (d < bestDist) {
+      bestDist = d
+      best = e
     }
-    return best
+  }
+  return best
 }
-
 
 // Create a connection
 function toConnection(nodes: Node[], edge: Edge): Connection {

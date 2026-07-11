@@ -1,5 +1,5 @@
-import type { Connection, Point2D } from '../algorithms/types'
-import { hexToPixel } from '../algorithms/types'
+import type { Connection, Point2D, HexCoord } from '../algorithms/types'
+import { hexToPixel, hexEdgeMidpoint } from '../algorithms/types'
 import { marchingSquares } from './marchingSquares'
 
 //---------------------------------------//
@@ -13,10 +13,14 @@ import { marchingSquares } from './marchingSquares'
 
 const UNIT_RADIUS = 1
 
+// Distance from hex's centre to edge midpoint
+const HEX_INRADIUS = Math.sqrt(3)/2
+
 export type CorridorOptions = {
   stepSize: number        // worm-walk step length, in hex-radius units
   jitter: number          // 0 = beeline to target, 1 = fully random wander each step
   maxSteps: number        // safety cap so a high-jitter walk can't loop forever
+  maxStepAttempts: number // retries per step to find a direction that avoids obstacles
   metaballSpacing: number // arc-length between dropped metaballs along the path
   baseRadius: number      // metaball radius (roughly half the tunnel width)
   radiusJitter: number    // +/- random variation on that radius
@@ -27,10 +31,11 @@ const DEFAULT_OPTIONS: CorridorOptions = {
   stepSize: 0.15,
   jitter: 0.3,
   maxSteps: 500,
+  maxStepAttempts: 10,
   metaballSpacing: 0.3,
   baseRadius: 0.4,
   radiusJitter: 0.12,
-  gridResolution: 0.08,
+  gridResolution: 0.18,
 }
 
 function dist(a: Point2D, b: Point2D): number {
@@ -50,20 +55,65 @@ function scale(v: Point2D, s: number): Point2D {
   return { x: v.x * s, y: v.y * s }
 }
 
+// Repulsion vector pushing 'current' away from every obstacle within influenceRadius.
+// closer --> stronger
+function repulsionAt(current: Point2D, obstacles: Point2D[], influenceRadius: number): Point2D {
+  let rx = 0, ry = 0
+  for (const o of obstacles) {
+    const dx = current.x - o.x, dy = current.y - o.y
+    const d = Math.hypot(dx, dy)
+    if (d > 1e-6 && d < influenceRadius) {
+      const strength = (influenceRadius - d) / influenceRadius // 0..1, stronger when closer
+      rx += (dx / d) * strength
+      ry += (dy / d) * strength
+    }
+  }
+  return { x: rx, y: ry }
+}
 
 // Biased random walk from start toward end.
 // At each step, blend a fully random direction with the direction-to-target by 'jitter'
 // 0 gives a straight line, higher values wander more while still making progress.
-function walkWorm(start: Point2D, end: Point2D, rand: () => number, opts: CorridorOptions): Point2D[] {
+function walkWorm(
+  start: Point2D,
+  end: Point2D,
+  rand: () => number,
+  opts: CorridorOptions,
+  obstacles: Point2D[],
+  influenceRadius: number,
+  isBlocked: (p: Point2D) => boolean
+): Point2D[] {
   const path: Point2D[] = [start]
   let current = start
   let steps = 0
   while (dist(current, end) > opts.stepSize && steps < opts.maxSteps) {
     const toTarget = normalise(sub(end, current))
-    const angle = rand() * Math.PI * 2
-    const randomDir: Point2D = { x: Math.cos(angle), y: Math.sin(angle) }
-    const dir = normalise(add(scale(toTarget, 1 - opts.jitter), scale(randomDir, opts.jitter)))
-    current = add(current, scale(dir, opts.stepSize))
+    const repulsion = repulsionAt(current, obstacles, influenceRadius)
+    const repulsionMag = Math.hypot(repulsion.x, repulsion.y)
+    const repulsionDir = repulsionMag > 1e-6 ? scale(repulsion, 1 / repulsionMag) : { x: 0, y: 0 }
+
+    // Scales w/ how hemmed-in the point is, capped so it can still be blended with the target/jitter directions.
+    const repulsionWeight = Math.min(repulsionMag * 1.5, 3)
+
+    let next: Point2D | null = null
+    for (let attempt = 0; attempt < opts.maxStepAttempts; attempt++) {
+      const localJitter = opts.jitter * (1 - attempt / opts.maxStepAttempts)
+      const angle = rand() * Math.PI * 2
+      const randomDir: Point2D = { x: Math.cos(angle), y: Math.sin(angle) }
+      const blended = add(
+        add(scale(toTarget, 1 - localJitter), scale(randomDir, localJitter)),
+        scale(repulsionDir, repulsionWeight)
+      )
+      const dir = normalise(blended)
+      const candidate = add(current, scale(dir, opts.stepSize))
+      if (!isBlocked(candidate)) {
+        next = candidate
+        break
+      }
+    }
+    // Last resort-----
+    // if every blended attempt was still blocked, push straight away from the nearest obstacle.
+    current = next ?? add(current, scale(repulsionMag > 1e-6 ? repulsionDir : toTarget, opts.stepSize))
     path.push(current)
     steps++
   }
@@ -104,33 +154,45 @@ function unionSDF(balls: Metaball[]): (p: Point2D) => number {
 }
 
 // rooms/entrances are addressed purely via each connection's HexEdge
+// for each connection --> builds the set of solid room cells the tunnel cannot pass through.
 export function carveCorridors(
-    connections: Connection[],
-    rand: () => number,
-    options: Partial<CorridorOptions> = {}
+  rooms: { cells: HexCoord[] }[],
+  connections: Connection[],
+  rand: () => number,
+  options: Partial<CorridorOptions> = {}
 ): Point2D[][] {
+  const opts: CorridorOptions = { ...DEFAULT_OPTIONS, ...options }
+  const outlines: Point2D[][] = []
 
-    const opts: CorridorOptions = { ...DEFAULT_OPTIONS, ...options }
-    const outlines: Point2D[][] = []
+  // A room cell is "solid" out to its inradius; the tunnel's own metaballs add up to (baseRadius + radiusJitter)
+  // beyond the path centreline, so push the clearance out that far too
+  const clearance = HEX_INRADIUS + opts.baseRadius + opts.radiusJitter
+  // Repulsion starts influencing the walk before it's actually at risk of violating clearance --> giving room to steer clear
+  const influenceRadius = clearance + 1.0
 
-    for (const connection of connections) {
-        const start = hexToPixel(connection.entranceA.cell, UNIT_RADIUS)
-        const end = hexToPixel(connection.entranceB.cell, UNIT_RADIUS)
+  for (const connection of connections) {
+    const obstacleCenters: Point2D[] = rooms
+      .flatMap((room, idx) => (idx === connection.a || idx === connection.b ? [] : room.cells))
+      .map(cell => hexToPixel(cell, UNIT_RADIUS))
+    const isBlocked = (p: Point2D) => obstacleCenters.some(c => dist(p, c) < clearance)
 
-        const path = walkWorm(start, end, rand, opts)
-        const balls = sampleMetaballs(path, rand, opts)
-        const field = unionSDF(balls)
+    const start = hexEdgeMidpoint(connection.entranceA, UNIT_RADIUS)
+    const end = hexEdgeMidpoint(connection.entranceB, UNIT_RADIUS)
 
-        const maxRadius = Math.max(...balls.map(b => b.radius))
-        const pad = maxRadius + opts.gridResolution * 2
-        const xs = balls.map(b => b.center.x)
-        const ys = balls.map(b => b.center.y)
-        const bounds = {
-            minX: Math.min(...xs) - pad,
-            maxX: Math.max(...xs) + pad,
-            minY: Math.min(...ys) - pad,
-            maxY: Math.max(...ys) + pad,
-        }
+    const path = walkWorm(start, end, rand, opts, obstacleCenters, influenceRadius, isBlocked)
+    const balls = sampleMetaballs(path, rand, opts)
+    const field = unionSDF(balls)
+
+    const maxRadius = Math.max(...balls.map(b => b.radius))
+    const pad = maxRadius + opts.gridResolution * 2
+    const xs = balls.map(b => b.center.x)
+    const ys = balls.map(b => b.center.y)
+    const bounds = {
+      minX: Math.min(...xs) - pad,
+      maxX: Math.max(...xs) + pad,
+      minY: Math.min(...ys) - pad,
+      maxY: Math.max(...ys) + pad,
+    }
 
         const loops = marchingSquares(field, bounds, opts.gridResolution)
         if (loops.length === 0) continue

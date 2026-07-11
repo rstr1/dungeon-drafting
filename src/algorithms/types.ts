@@ -168,6 +168,12 @@ export function hexEdgeCorners(
     return [corners[bestIdx], corners[(bestIdx + 1) % 6]]
 }
 
+// The midpoint of a specific edge
+export function hexEdgeMidpoint(edge: HexEdge, outerRadius: number): { x: number; y: number } {
+    const [a, b] = hexEdgeCorners(edge.cell, edge.direction, outerRadius)
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
 
 //---------------------------------------//
 //  Algorithms                           //
@@ -235,6 +241,7 @@ export type Connection = {
 // XZ-plane point in the same pixel space as hexToPixel (unit hex radius).
 // Used by connectinonGraph.ts and marchingSquares.ts
 export type Point2D = { x: number; y: number }
+
 
 
 //---------------------------------------//
