@@ -233,3 +233,15 @@ export type RoomInstance = {
     cells: HexCoord[]       // world-space cells
     entrances: HexEdge[]    // world-space open walls
 }
+
+//---------------------------------------//
+//  Connection Graph                     //
+//---------------------------------------//
+// A single edge in the room-connectivity graph
+
+export type Connection = {
+    a: number
+    b: number
+    entranceA: HexEdge
+    entranceB: HexEdge
+}

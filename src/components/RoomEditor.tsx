@@ -11,7 +11,7 @@ import HexGrid from './HexGrid'
 //   - click a hex (filled or ghost) to add/remove it from the room
 //   - click a wall/entrance marker to toggle it open/closed
 
-const EDIT_RADIUS = 3
+const EDIT_RADIUS = 10
 const ROOM_TAGS: RoomTag[] = ['spawn', 'exit', 'large', 'small', 'event', 'custom']
 const ANCHOR: HexCoord = { q: 0, r: 0 }
 
