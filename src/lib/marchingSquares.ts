@@ -3,14 +3,8 @@ import type { Point2D } from '../algorithms/types'
 //---------------------------------------//
 //  Marching Squares                     //
 //---------------------------------------//
-// Turns a scalar field into closed polygon outline(s).
-// Shared by corridorFill.ts and later, cavernFill.ts
-//
-// Correctness note:
-// A shared interior grid edge is sampled independently by its two neighbouring cells.
-// Both computations are mathematically the same point but can land a few floating-point bits apart
-// This breaks exact-match chaining into hundreds of fragments.
-// Coordinates are quantised before being used as chain keys to collapse those near-duplicates.
+// Turns a scalar field into closed polygon outlines.
+// Due to floating point mismatches near-duplicate coordinates are collapsed into one.
 
 export type Bounds = { minX: number; minY: number; maxX: number; maxY: number }
 
@@ -27,7 +21,7 @@ function lerp(a: Point2D, b: Point2D, t: number): Point2D {
 // sampleFn: negative = inside the shape, positive = outside(a signed field).
 //
 // Returns one polygon per closed contour found.
-// Loops under minLoopPoints are boundary/degenerate artifacts and are dropped.
+// Loops under minLoopPoints are boundary artifacts and are dropped.
 export function marchingSquares(
   sampleFn: (p: Point2D) => number,
   bounds: Bounds,
@@ -37,7 +31,7 @@ export function marchingSquares(
   const cols = Math.ceil((bounds.maxX - bounds.minX) / cellSize)
   const rows = Math.ceil((bounds.maxY - bounds.minY) / cellSize)
 
-  // Pre-sample the whole grid once so each corner is evaluated exactly once.
+  // Pre-sample the whole grid once
   const grid: number[][] = []
   for (let j = 0; j <= rows; j++) {
     const row: number[] = []
@@ -48,8 +42,8 @@ export function marchingSquares(
   }
 
   // For each cell, walk its 4 edges in perimeter order and record where the field crosses zero.
-  // 2 crossings -> one boundary segment through the cell.
-  // 4 crossings -> two segments, paired in the order encountered.
+  // 2 crossings --> one boundary segment through the cell.
+  // 4 crossings --> two segments, paired in the order encountered.
   const segments: [Point2D, Point2D][] = []
   for (let j = 0; j < rows; j++) {
     for (let i = 0; i < cols; i++) {
@@ -74,13 +68,24 @@ export function marchingSquares(
       if (crossings.length === 2) {
         segments.push([crossings[0], crossings[1]])
       } else if (crossings.length === 4) {
-        segments.push([crossings[0], crossings[1]])
-        segments.push([crossings[2], crossings[3]])
+
+        // Ambiguous, so just sample the cell centre and use its sign to resolve which topology is actually correct.
+        const centerInside = sampleFn({ x: x0 + cellSize / 2, y: y0 + cellSize / 2 }) < 0
+        const corner0Inside = values[0] < 0
+        if (corner0Inside === centerInside) {
+          // corner0 & corner2 share the centre's status merged into one region through the middle
+          segments.push([crossings[0], crossings[1]])
+          segments.push([crossings[2], crossings[3]])
+        } else {
+          // corner1 & corner3 share the centre's status instead
+          segments.push([crossings[0], crossings[3]])
+          segments.push([crossings[1], crossings[2]])
+        }
       }
     }
   }
 
-  // Chain segments into closed loops via shared (quantised) endpoints.
+  // Chain segments into closed loops via shared + quantised endpoints.
   const bucket = new Map<string, { idx: number; end: 0 | 1 }[]>()
   segments.forEach((seg, idx) => {
     for (const end of [0, 1] as const) {
@@ -101,7 +106,7 @@ export function marchingSquares(
     while (guard++ < segments.length * 2) {
       const candidates = bucket.get(quantiseKey(loop[loop.length - 1])) ?? []
       const next = candidates.find(c => !usedSeg.has(c.idx))
-      if (!next) break // dangling end -- shouldn't happen with a well-padded field, stop defensively
+      if (!next) break // dangling end
       usedSeg.add(next.idx)
       const seg = segments[next.idx]
       const other = next.end === 0 ? seg[1] : seg[0]

@@ -130,11 +130,12 @@ export function edgeKey(edge: HexEdge): string {
 }
 
 // Rotate a set of edges around an anchor cell
+// (default anchor: origin)
 export function rotateEdges(edges: HexEdge[], steps: number, anchor: HexCoord = { q: 0, r: 0 }): HexEdge[] {
     const n = ((steps % 6) + 6) % 6
     return edges.map(e => ({
         cell: rotateStructure([e.cell], n, anchor)[0],
-        direction: (e.direction + n) % 6,
+        direction: ((e.direction - n) % 6 + 6) % 6,
     }))
 }
 
@@ -242,6 +243,8 @@ export type Connection = {
 // Used by connectinonGraph.ts and marchingSquares.ts
 export type Point2D = { x: number; y: number }
 
+// A single corridor/junction floor shape
+export type CorridorPolygon = { outer: Point2D[]; holes: Point2D[][] }
 
 
 //---------------------------------------//
@@ -256,7 +259,7 @@ export type DungeonMap = {
     metadata?: {
         rooms?: { id: string; tag?: RoomTag; cells: HexCoord[]; entrances?: HexEdge[] }[]
         connections?: Connection[]
-        corridors?: Point2D[][]
+        corridors?: CorridorPolygon[]
         optionalRoomCount?: number
         numLevels?: number
     }

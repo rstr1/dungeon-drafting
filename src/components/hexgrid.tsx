@@ -5,6 +5,7 @@ import {
   type DungeonMap,
   type HexCoord,
   type RoomTag,
+  type CorridorPolygon,
   hexToPixel,
   hexCorners,
   hexFromKey,
@@ -41,7 +42,7 @@ type HexGridProps = {
 const DEFAULT_OUTER_RADIUS = 32
 const SIDEBAR_WIDTH = 260
 const DEFAULT_WALL_HEIGHT_FRACTION = 0.5
-const CAMERA_FOV = 40
+const CAMERA_FOV = 50
 
 //---------------------------------------//
 //  HexGrid Function                     //
@@ -388,15 +389,17 @@ function drawDungeon(
 //  Draw Corridors Function              //
 //---------------------------------------//
 
-// Renders each corridor tunnel outline (metadata.corridors, from Step B's
-// worm/metaball generation) as a filled floor + a perimeter wall, in
-// continuous space -- independent of hex cell boundaries.
+// Renders each corridor/junction floor shape (metadata.corridors) as a filled floor with
+// a perimeter wall, in continuous space -- independent of hex cell boundaries. A shape may
+// carry interior holes (e.g. a multi-way junction where the tunnels' metaballs don't quite
+// reach the very centre, leaving a real gap fully enclosed by the outer contour) -- those
+// render as an actual cut-out via THREE.Shape's hole support, with their own inner wall
+// loop, rather than being covered by the outer fill.
 //
-// Known rough edge: this doesn't attempt a proper boolean merge with the
-// room hex mesh at the junction. The worm path starts exactly at the
-// room's entrance cell, so the tunnel end overlaps the room there, but the
-// two meshes' wall lines won't line up perfectly -- acceptable for now,
-// worth revisiting if it looks wrong once actually rendered.
+// Known rough edge: this doesn't attempt a proper boolean merge with the room hex mesh at
+// the junction. The corridor path starts exactly at the room's entrance cell, so the tunnel
+// end overlaps the room there, but the two meshes' wall lines won't line up perfectly --
+// acceptable for now, worth revisiting if it looks wrong once actually rendered.
 function drawCorridors(
   scene: THREE.Scene,
   dungeon: DungeonMap,
@@ -409,37 +412,15 @@ function drawCorridors(
   strokeMat: THREE.LineBasicMaterial,
   wallHeight: number,
 ) {
-  for (const polygon of dungeon.metadata?.corridors ?? []) {
-    if (polygon.length < 3) continue
+  // Corridor points are generated in unit-hex-radius space (see corridorFill.ts) -- scale
+  // by the live outerRadius so they land in the same pixel space as hexToPixel(hex,
+  // outerRadius) above, then apply the same centering offset as the hex mesh.
+  const toLocal = (p: { x: number; y: number }) => ({ x: p.x * outerRadius - centerX, z: p.y * outerRadius - centerY })
 
-    // Corridor points are generated in unit-hex-radius space (see
-    // corridorFill.ts) -- scale by the live outerRadius so they land in the
-    // same pixel space as hexToPixel(hex, outerRadius) above, then apply
-    // the same centering offset as the hex mesh.
-    const pts = polygon.map(p => ({ x: p.x * outerRadius - centerX, z: p.y * outerRadius - centerY }))
-
-    // Filled floor (XZ plane), same construction as a hex floor tile.
-    const shape = new THREE.Shape()
-    shape.moveTo(pts[0].x, pts[0].z)
-    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, pts[i].z)
-    shape.closePath()
-    const fillGeo = new THREE.ShapeGeometry(shape)
-    const fillMesh = new THREE.Mesh(fillGeo, getFillMat(fillColour))
-    fillMesh.rotation.x = Math.PI / 2
-    fillMesh.userData['isDungeonHex'] = true
-    scene.add(fillMesh)
-
-    // Outline
-    const linePoints = [...pts, pts[0]].map(p => new THREE.Vector3(p.x, 0, p.z))
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), strokeMat)
-    line.userData['isDungeonHex'] = true
-    scene.add(line)
-
-    // Perimeter wall, batched into ONE mesh for the whole loop rather than
-    // one mesh per boundary edge -- these outlines can have 500-1500+
-    // points, and a separate THREE.Mesh per edge at that count would tank
-    // frame rate. One buffer, many triangles, is cheap; many mesh objects
-    // is not.
+  // Batches one wall mesh's worth of triangles for a single closed ring (outer boundary or
+  // one hole), rather than one mesh per boundary edge -- these outlines can have 500-1500+
+  // points, and a separate THREE.Mesh per edge at that count would tank frame rate.
+  function addWallRing(pts: { x: number; z: number }[]) {
     const wallVerts: number[] = []
     for (let i = 0; i < pts.length; i++) {
       const a = pts[i]
@@ -460,5 +441,41 @@ function drawCorridors(
     const wallMesh = new THREE.Mesh(wallGeo, wallMat)
     wallMesh.userData['isDungeonHex'] = true
     scene.add(wallMesh)
+
+    const linePoints = [...pts, pts[0]].map(p => new THREE.Vector3(p.x, 0, p.z))
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), strokeMat)
+    line.userData['isDungeonHex'] = true
+    scene.add(line)
+  }
+
+  for (const polygon of (dungeon.metadata?.corridors ?? []) as CorridorPolygon[]) {
+    if (polygon.outer.length < 3) continue
+
+    const outerPts = polygon.outer.map(toLocal)
+    const holePts = polygon.holes.filter(h => h.length >= 3).map(h => h.map(toLocal))
+
+    // Filled floor (XZ plane) with any junction gaps properly cut out.
+    const shape = new THREE.Shape()
+    shape.moveTo(outerPts[0].x, outerPts[0].z)
+    for (let i = 1; i < outerPts.length; i++) shape.lineTo(outerPts[i].x, outerPts[i].z)
+    shape.closePath()
+    for (const hole of holePts) {
+      const holePath = new THREE.Path()
+      holePath.moveTo(hole[0].x, hole[0].z)
+      for (let i = 1; i < hole.length; i++) holePath.lineTo(hole[i].x, hole[i].z)
+      holePath.closePath()
+      shape.holes.push(holePath)
+    }
+
+    const fillGeo = new THREE.ShapeGeometry(shape)
+    const fillMesh = new THREE.Mesh(fillGeo, getFillMat(fillColour))
+    fillMesh.rotation.x = Math.PI / 2
+    fillMesh.userData['isDungeonHex'] = true
+    scene.add(fillMesh)
+
+    // Outer perimeter wall, plus one inner wall ring per hole so the gap actually reads as
+    // an enclosed void rather than just an absence of floor.
+    addWallRing(outerPts)
+    for (const hole of holePts) addWallRing(hole)
   }
 }

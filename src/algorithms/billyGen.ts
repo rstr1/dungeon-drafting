@@ -1,7 +1,7 @@
 import { hexKey } from './types'
 import type { Algorithm, DungeonMap, HexCoord, HexEdge, RoomTag, RoomTemplate, RoomInstance } from './types'
 import { rng } from '../lib/rng'
-import { ANCHOR, placeTemplate, overlaps, tryPlaceAtRandom, pickWeighted, resolveTemplates } from './roomPlacement'
+import { ANCHOR, placeTemplate, overlaps, tryPlaceAtRandom, pickWeighted, resolveTemplates, resolveUsableEntrances } from './roomPlacement'
 import { buildConnectionGraph } from '../lib/connectionGraph'
 import { carveCorridors } from '../lib/corridorFill'
 
@@ -117,6 +117,9 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
     //---------------------------------------//
     //  Room <---> Room Connections          //
     //---------------------------------------//
+    // Drop any entrance smothered by another room's wall
+    resolveUsableEntrances(rooms, occupied)
+
     // Delaunay --> MST --> loop edges
     const connections = buildConnectionGraph(rooms, rand)
 
@@ -140,7 +143,7 @@ export const billyGen: Algorithm = {
   params: [
     {
       key: 'floorNumber',
-      label: 'Floor Number',
+      label: 'Level Number',
       type: 'number',
       min: 0,
       max: 50,
@@ -149,16 +152,16 @@ export const billyGen: Algorithm = {
     },
     {
       key: 'baseRoomCount',
-      label: 'Prefab Room Count',
+      label: 'Initial Room Count',
       type: 'number',
       min: 0,
       max: 50,
       step: 1,
-      default: 6,
+      default: 4,
     },
     {
       key: 'roomsPerFloor',
-      label: 'Additional Rooms Per Floor',
+      label: 'Extra Rooms Per Floor',
       type: 'number',
       min: 0,
       max: 10,
@@ -170,9 +173,9 @@ export const billyGen: Algorithm = {
       label: 'Room Spread',
       type: 'number',
       min: 5,
-      max: 50,
+      max: 40,
       step: 1,
-      default: 20,
+      default: 12,
     },
     {
       key: 'seed',

@@ -1,5 +1,5 @@
-import { hexKey, hexDistance, rotateStructure, rotateEdges } from './types'
-import type { HexCoord, RoomTemplate, RoomInstance } from './types'
+import { hexKey, hexDistance, hexNeighbour, hexNeighbours, rotateStructure, rotateEdges } from './types'
+import type { HexCoord, HexEdge, RoomTemplate, RoomInstance } from './types'
 import { randInt } from '../lib/rng'
 
 //---------------------------------------//
@@ -52,6 +52,17 @@ export function overlaps(cells: HexCoord[], occupied: Set<string>): boolean {
   return cells.some(c => occupied.has(hexKey(c)))
 }
 
+// Check if cell is adjacent to an already occupied cell.
+export function adjacentToOccupied(cells: HexCoord[], occupied: Set<string>): boolean {
+  const ownKeys = new Set(cells.map(hexKey))
+  return cells.some(c =>
+    hexNeighbours(c).some(n => {
+      const k = hexKey(n)
+      return !ownKeys.has(k) && occupied.has(k)
+    })
+  )
+}
+
 // Pick a random anchor coordinate within a given 'spread'
 function randomAnchor(rand: () => number, spread: number): HexCoord {
   return { q: randInt(rand, -spread, spread), r: randInt(rand, -spread, spread) }
@@ -86,7 +97,11 @@ export function tryPlaceAtRandom(
     const anchor = randomAnchor(rand, samplingRange)
     const rotation = randInt(rand, 0, 5)
     const instance = placeTemplate(template, anchor, rotation)
-    if (closestCellDistance(instance.cells) <= spread && !overlaps(instance.cells, occupied)) {
+    if (
+      closestCellDistance(instance.cells) <= spread &&
+      !overlaps(instance.cells, occupied) &&
+      !adjacentToOccupied(instance.cells, occupied)
+    ) {
       return instance
     }
   }
@@ -104,6 +119,44 @@ export function pickWeighted(templates: RoomTemplate[], rand: () => number): Roo
     if (roll <= 0) return t
   }
   return templates[templates.length - 1]
+}
+
+
+// Drop any entrance whose facing neighbour is occupied by a different room.
+// adjacentToOccupied should prevent this, but this pass is the defensive backstop.
+// If every declared entrance on a room turns out smothered, fall back to scanning the room's own cells.
+export function resolveUsableEntrances(
+  rooms: { cells: HexCoord[]; entrances?: HexEdge[] }[],
+  occupied: Set<string>
+): void {
+  for (const room of rooms) {
+    const ownKeys = new Set(room.cells.map(hexKey))
+    const facesOpenSpace = (edge: HexEdge) => {
+      const neighbourKey = hexKey(hexNeighbour(edge.cell, edge.direction))
+      return !ownKeys.has(neighbourKey) && !occupied.has(neighbourKey)
+    }
+
+    const usable = (room.entrances ?? []).filter(facesOpenSpace)
+    if (usable.length > 0) {
+      room.entrances = usable
+      continue
+    }
+
+    // Every declared entrance is smothered -- find any cell edge that actually faces
+    // open space instead of leaving the room with no usable entrance at all.
+    const fallback: HexEdge[] = []
+    findOpenEdge:
+    for (const cell of room.cells) {
+      for (let direction = 0; direction < 6; direction++) {
+        const edge: HexEdge = { cell, direction }
+        if (facesOpenSpace(edge)) {
+          fallback.push(edge)
+          break findOpenEdge
+        }
+      }
+    }
+    room.entrances = fallback // stays empty only if the room is fully enclosed on every side
+  }
 }
 
 // Merges built-in guaranteed rooms w/ user-authored guaranteed templates.
