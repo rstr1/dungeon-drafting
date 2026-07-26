@@ -4,6 +4,7 @@ import { rng } from '../lib/rng'
 import { ANCHOR, placeTemplate, overlaps, tryPlaceAtRandom, pickWeighted, resolveTemplates, resolveUsableEntrances } from './roomPlacement'
 import { buildConnectionGraph } from '../lib/connectionGraph'
 import { carveCorridors } from '../lib/corridorFill'
+import { carveCaverns } from '../lib/cavernFill'
 
 //---------------------------------------//
 //  Stage 0: Universal Constants         //
@@ -35,6 +36,19 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
   const roomsPerFloor = params['roomsPerFloor'] as number
 
   const rand = rng(seed)
+
+  const cavernDensity = params['cavernDensity'] as number
+  const cavernScale = params['cavernScale'] as number
+  const cavernReach = params['cavernReach'] as number
+  const cavernEdgeFeather = params['cavernEdgeFeather'] as number
+  const cavernRoomClearance = params['cavernRoomClearance'] as number
+  const cavernOctaves = params['cavernOctaves'] as number
+  const requireCorridorAdjacency = params['requireCorridorAdjacency'] as boolean
+
+  const loopChance = params['loopChance'] as number
+
+  const corridorMeander = params['corridorMeander'] as number
+  const corridorMeanderScale = params['corridorMeanderScale'] as number
 
   const optionalRoomCount = baseRoomCount + roomsPerFloor * floorNumber
   const numLevels = resolveNumLevels(floorNumber)
@@ -121,15 +135,30 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
     resolveUsableEntrances(rooms, occupied)
 
     // Delaunay --> MST --> loop edges
-    const connections = buildConnectionGraph(rooms, rand)
+    const connections = buildConnectionGraph(rooms, rand, loopChance)
 
-    // Organic tunnel outlines: worm walk + metaball union + marching squares
+    // Organic tunnel outlines: A* + spline + metaball union + marching squares
     // Continuous space independent of hex boundaries
-    const corridors = carveCorridors(rooms, connections, rand)
+    const corridors = carveCorridors(rooms, connections, rand, {
+      meanderStrength: corridorMeander,
+      meanderScale: corridorMeanderScale,
+    })
+
+    // Ambient caverns --> noise-field-driven fill, independent of the connection graph.
+    // Corridors should blend seamlessly into Caverns
+    const caverns = carveCaverns(rooms, corridors, rand, {
+      threshold: 0.5 - cavernDensity,
+      noiseScale: cavernScale,
+      cavernReach,
+      edgeFeather: cavernEdgeFeather,
+      roomClearance: cavernRoomClearance,
+      octaves: cavernOctaves,
+      requireCorridorAdjacency,
+    })
 
   return {
     cells: occupied,
-    metadata: { rooms, connections, corridors, optionalRoomCount, numLevels },
+    metadata: { rooms, connections, corridors, caverns, optionalRoomCount, numLevels },
   }
 }
 
@@ -139,7 +168,7 @@ function generate(params: Record<string, number | boolean>, customTemplates: Roo
 export const billyGen: Algorithm = {
   id: 'billy-gen',
   name: 'BillyGen',
-  description: 'Prefabbed rooms + carved caverns/corridors + multi-level',
+  description: 'Prefabbed rooms + carved caverns/corridors',
   params: [
     {
       key: 'floorNumber',
@@ -185,6 +214,93 @@ export const billyGen: Algorithm = {
       max: 99999,
       step: 1,
       default: 0,
+    },
+    {
+      key: 'cavernDensity',
+      label: 'Cavern Density',
+      type: 'number',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      default: 0.45,
+    },
+    {
+      key: 'cavernScale',
+      label: 'Cavern Size',
+      type: 'number',
+      min: 1,
+      max: 12,
+      step: 0.5,
+      default: 4,
+    },
+    {
+      key: 'cavernReach',
+      label: 'Cavern Reach',
+      type: 'number',
+      min: 0,
+      max: 15,
+      step: 0.5,
+      default: 9,
+    },
+    {
+      key: 'cavernEdgeFeather',
+      label: 'Cavern Edge Softness',
+      type: 'number',
+      min: 0,
+      max: 10,
+      step: 0.5,
+      default: 3,
+    },
+    {
+      key: 'cavernRoomClearance',
+      label: 'Cavern Room Clearance',
+      type: 'number',
+      min: 0,
+      max: 2,
+      step: 0.1,
+      default: 0.5,
+    },
+    {
+      key: 'cavernOctaves',
+      label: 'Cavern Detail',
+      type: 'number',
+      min: 1,
+      max: 6,
+      step: 1,
+      default: 4,
+    },
+    {
+      key: 'requireCorridorAdjacency',
+      label: 'Cull Disconnected Caverns',
+      type: 'boolean',
+      default: true,
+    },
+    {
+      key: 'loopChance',
+      label: 'Extra Loop Chance',
+      type: 'number',
+      min: 0,
+      max: 1,
+      step: 0.05,
+      default: 0.15,
+    },
+    {
+      key: 'corridorMeander',
+      label: 'Corridor Meander',
+      type: 'number',
+      min: 0,
+      max: 2,
+      step: 0.1,
+      default: 0.6,
+    },
+    {
+      key: 'corridorMeanderScale',
+      label: 'Corridor Meander Scale',
+      type: 'number',
+      min: 0.5,
+      max: 10,
+      step: 0.5,
+      default: 3,
     },
   ],
   generate,

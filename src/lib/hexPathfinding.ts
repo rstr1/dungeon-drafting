@@ -12,6 +12,16 @@ function heuristic(a: HexCoord, b: HexCoord): number {
   return hexDistance(a, b)
 }
 
+export type HexAStarOptions = {
+  maxIterations?: number
+
+  // Cost of stepping into a given hex.
+  // Must always be >= 1, or the hexDistance heuristic above stops being admisible.
+  // Defaults to 1 per step, giving the original straight-line-shortest-path behaviour.
+  // Algorithm will naturally avoid expensive terrain, avoiding beelining.
+  stepCost?: (hex: HexCoord) => number
+}
+
 // Returns:
 // - Ordered list of hex cells from start to end (inclusive), or
 // - null (if no path exists within budget)
@@ -19,8 +29,10 @@ export function hexAStar(
   start: HexCoord,
   end: HexCoord,
   isBlocked: (hex: HexCoord) => boolean,
-  maxIterations = 5000
+  options: HexAStarOptions = {}
 ): HexCoord[] | null {
+  const maxIterations = options.maxIterations ?? 5000
+  const stepCost = options.stepCost ?? (() => 1)
   const startKey = hexKey(start)
   const endKey = hexKey(end)
   if (startKey === endKey) return [start]
@@ -71,7 +83,7 @@ export function hexAStar(
       // The end cell is always enterable even if it'd otherwise register as blocked
       if (neighbourKey !== endKey && isBlocked(neighbour)) continue
 
-      const tentativeG = currentG + 1
+      const tentativeG = currentG + stepCost(neighbour)
       const existingG = gScore.get(neighbourKey)
       if (existingG === undefined || tentativeG < existingG) {
         hexByKey.set(neighbourKey, neighbour)

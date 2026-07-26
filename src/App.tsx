@@ -74,6 +74,7 @@ export default function App() {
 
   const [palette, setPalette] = useState<Palette>(() => clonePalette(DEFAULT_PALETTE))
   const [wallHeightFraction, setWallHeightFraction] = useState(0.5)
+  const [cameraFov, setCameraFov] = useState(50)
 
   // UseEffects
   useEffect(() => {
@@ -148,9 +149,10 @@ export default function App() {
       params,
       palette,
       wallHeightFraction,
+      cameraFov,
       roomTemplates,
     })
-  }, [selectedId, params, palette, wallHeightFraction, roomTemplates])
+  }, [selectedId, params, palette, wallHeightFraction, cameraFov, roomTemplates])
 
   // Parse an uploaded file --> apply to application state
   const handleImportFile = useCallback(async (file: File) => {
@@ -158,12 +160,14 @@ export default function App() {
       const config = await importConfig(file)
       const next = ALGORITHMS.find(a => a.id === config.algorithmId)
       if (next) {
+        const mergedParams = { ...buildDefaultParams(next), ...config.params }
         setSelectedId(next.id)
-        setParams(config.params)
-        setDungeon(next.generate(config.params, config.roomTemplates))
+        setParams(mergedParams)
+        setDungeon(next.generate(mergedParams, config.roomTemplates))
       }
       setPalette(clonePalette(config.palette))
       setWallHeightFraction(config.wallHeightFraction)
+      setCameraFov(config.cameraFov ?? 50)
       setRoomTemplates(config.roomTemplates)
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Failed to import preset.')
@@ -362,6 +366,26 @@ export default function App() {
             />
           </div>
         </section>
+
+        {/* Camera */}
+        <section style={styles.section}>
+          <label style={styles.label}>Camera</label>
+          <div style={styles.paramRow}>
+            <div style={styles.paramHeader}>
+              <span style={styles.paramLabel}>Field of View</span>
+              <span style={styles.paramValue}>{cameraFov}°</span>
+            </div>
+            <input
+              type="range"
+              min={20}
+              max={100}
+              step={1}
+              value={cameraFov}
+              onChange={e => setCameraFov(Number(e.target.value))}
+              style={styles.slider}
+            />
+          </div>
+        </section>
         </>
         )}
 
@@ -402,6 +426,7 @@ export default function App() {
             wallHeightFraction={wallHeightFraction}
             roomTagColours={palette.roomTagColours}
             fixedCenter={{ q: 0, r: 0 }}
+            fov={cameraFov}
           />
         ) : (
           <RoomEditor

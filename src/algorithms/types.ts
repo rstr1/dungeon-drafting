@@ -260,6 +260,7 @@ export type DungeonMap = {
         rooms?: { id: string; tag?: RoomTag; cells: HexCoord[]; entrances?: HexEdge[] }[]
         connections?: Connection[]
         corridors?: CorridorPolygon[]
+        caverns?: CorridorPolygon[]
         optionalRoomCount?: number
         numLevels?: number
     }

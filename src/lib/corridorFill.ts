@@ -2,6 +2,7 @@ import type { Connection, Point2D, HexCoord, CorridorPolygon } from '../algorith
 import { hexToPixel, hexEdgeMidpoint, hexKey, hexNeighbour } from '../algorithms/types'
 import { marchingSquares } from './marchingSquares'
 import { hexAStar } from './hexPathfinding'
+import { createNoise2D } from './noise'
 
 //---------------------------------------//
 //  Corridor Fill                        //
@@ -15,12 +16,24 @@ import { hexAStar } from './hexPathfinding'
 
 const UNIT_RADIUS = 1
 
+// Same defensive merge as cavernFill.ts
+function mergeDefined<T extends object>(defaults: T, overrides: Partial<T>): T {
+  const result = { ...defaults }
+  for (const key in overrides) {
+    const value = overrides[key]
+    if (value !== undefined) result[key] = value as T[typeof key]
+  }
+  return result
+}
+
 export type CorridorOptions = {
   splineSamplesPerSegment: number // curve points generated between each pair of hex waypoints
   metaballSpacing: number // arc-length between dropped metaballs along the path
   baseRadius: number      // metaball radius (roughly half the tunnel width)
   radiusJitter: number    // +/- random variation on that radius
   gridResolution: number  // marching squares sampling cell size
+  meanderStrength: number // 0 = pure shortest path --> higher == A* winds around slightly-pricier terrain
+  meanderScale: number    // world-units per meander noise feature --> smaller == tighter/twistier wiggles
 }
 
 const DEFAULT_OPTIONS: CorridorOptions = {
@@ -29,6 +42,21 @@ const DEFAULT_OPTIONS: CorridorOptions = {
   baseRadius: 0.4,
   radiusJitter: 0.2,
   gridResolution: 0.4,
+  meanderStrength: 0.6,
+  meanderScale: 3,
+}
+
+// Per-cell A* step costs driven by seeded noise.
+//
+// Cells the noise favours are pricier to enter --> Shortest-cost path will weave around.
+function makeMeanderCost(seed: number, strength: number, scale: number): (hex: HexCoord) => number {
+  if (strength <= 0) return () => 1
+  const noise = createNoise2D(seed)
+  return (hex: HexCoord) => {
+    const p = hexToPixel(hex, UNIT_RADIUS)
+    const n = (noise(p.x / scale, p.y / scale) + 1) / 2 // roughly [0, 1]
+    return 1 + strength * n
+  }
 }
 
 function dist(a: Point2D, b: Point2D): number {
@@ -184,7 +212,13 @@ export function carveCorridors(
   rand: () => number,
   options: Partial<CorridorOptions> = {}
 ): CorridorPolygon[] {
-  const opts: CorridorOptions = { ...DEFAULT_OPTIONS, ...options }
+  const opts: CorridorOptions = mergeDefined(DEFAULT_OPTIONS, options)
+
+  // 1 shared meander field for the whole dungeon:
+  // --> winding reads as spatially coherent rather than restarting per corridor.
+  // Derived from shared rand()
+  const meanderSeed = Math.floor(rand() * 0xffffffff)
+  const stepCost = makeMeanderCost(meanderSeed, opts.meanderStrength, opts.meanderScale)
 
   type ConnectionField = { balls: Metaball[]; bounds: Bounds }
   const perConnection: ConnectionField[] = []
@@ -205,7 +239,7 @@ export function carveCorridors(
     const pathStart = isBlocked(exitA) ? connection.entranceA.cell : exitA
     const pathEnd = isBlocked(exitB) ? connection.entranceB.cell : exitB
 
-    const hexPath = hexAStar(pathStart, pathEnd, isBlocked) ?? [pathStart, pathEnd]
+    const hexPath = hexAStar(pathStart, pathEnd, isBlocked, { stepCost }) ?? [pathStart, pathEnd]
     const interiorHexes = hexPath.filter(hex => {
       const key = hexKey(hex)
       return key !== entranceAKey && key !== entranceBKey

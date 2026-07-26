@@ -33,6 +33,7 @@ type HexGridProps = {
   highlightCells?: HexCoord[]   // cells drawn in a distinct colour (e.g. room anchor)
   highlightColour?: string
   fixedCenter?: HexCoord        // lock camera to specific cell (in RoomEditor)
+  fov?: number                  // camera field of view, in degrees
 }
 
 //---------------------------------------//
@@ -63,6 +64,7 @@ export default function HexGrid({
   highlightCells,
   highlightColour = DEFAULT_PALETTE.accent,
   fixedCenter,
+  fov = CAMERA_FOV,
 }: HexGridProps) {
   const containerRef  = useRef<HTMLDivElement>(null)
   const rendererRef   = useRef<THREE.WebGLRenderer | null>(null)
@@ -97,7 +99,7 @@ export default function HexGrid({
     sceneRef.current = scene
 
     // Perspective camera
-    const camera = new THREE.PerspectiveCamera(CAMERA_FOV, width / height, 0.1, 10000)
+    const camera = new THREE.PerspectiveCamera(fov, width / height, 0.1, 10000)
     camera.position.set(0, 500, 500)
     camera.lookAt(0, 0, 0)
     cameraRef.current = camera
@@ -111,12 +113,6 @@ export default function HexGrid({
 
     drawDungeon(scene, dungeon, outerRadius, fillColour, lineColour, wallColour, wallHeightFraction, ghostCells, roomTagColours, highlightCells, highlightColour, fixedCenter)
 
-    // Click-to-select: raycast against tagged meshes (hexCell / hexEdge).
-    // Edge hits take priority since edge markers are more specific targets.
-    // Uses our own pointerdown/pointerup distance check rather than the
-    // browser's native 'click' event — a camera-rotate drag can still
-    // register as a "click" under the browser's own (very small) movement
-    // threshold, which was placing/toggling cells while just orbiting.
     const raycaster = new THREE.Raycaster()
     const pointer = new THREE.Vector2()
     const CLICK_DRAG_THRESHOLD = 6 // pixels
@@ -180,6 +176,14 @@ export default function HexGrid({
       controlsRef.current  = null
     }
   }, [])
+
+  // Live camera FOV updates
+  useEffect(() => {
+    const camera = cameraRef.current
+    if (!camera) return
+    camera.fov = fov
+    camera.updateProjectionMatrix()
+  }, [fov])
 
   // Redraw on dungeon/radius/colour change, preserve camera position
   useEffect(() => {
@@ -352,11 +356,9 @@ function drawDungeon(
     }
   }
 
-  // Corridor tunnels (Step B): organic worm/metaball outlines from the
-  // algorithm layer, generated in unit-hex-radius space -- scaled here by
-  // the live outerRadius so they land in the same pixel space as the hex
-  // mesh above.
-  drawCorridors(scene, dungeon, outerRadius, centerX, centerY, getFillMat, fillColour, wallMat, strokeMat, wallHeight)
+  // Organic floor
+  // - corridors and caverns are unioned into one scalar field in cavernFill.ts before marching squares runs
+  drawCorridorPolygons(scene, dungeon.metadata?.caverns ?? [], outerRadius, centerX, centerY, getFillMat, fillColour, wallMat, strokeMat, wallHeight)
 
   // Ghost cells --> faint, clickable placeholders for cells not yet in the room
   for (const hex of ghostCells ?? []) {
@@ -389,20 +391,12 @@ function drawDungeon(
 //  Draw Corridors Function              //
 //---------------------------------------//
 
-// Renders each corridor/junction floor shape (metadata.corridors) as a filled floor with
-// a perimeter wall, in continuous space -- independent of hex cell boundaries. A shape may
-// carry interior holes (e.g. a multi-way junction where the tunnels' metaballs don't quite
-// reach the very centre, leaving a real gap fully enclosed by the outer contour) -- those
-// render as an actual cut-out via THREE.Shape's hole support, with their own inner wall
-// loop, rather than being covered by the outer fill.
-//
-// Known rough edge: this doesn't attempt a proper boolean merge with the room hex mesh at
-// the junction. The corridor path starts exactly at the room's entrance cell, so the tunnel
-// end overlaps the room there, but the two meshes' wall lines won't line up perfectly --
-// acceptable for now, worth revisiting if it looks wrong once actually rendered.
-function drawCorridors(
+// Renders a list of CorridorPolygon shapes as filled floors with a perimeter wall.
+// A shape may carry interior holes, leaving a real gap fully enclosed by the outer contour. (rendered as cut-out)
+
+function drawCorridorPolygons(
   scene: THREE.Scene,
-  dungeon: DungeonMap,
+  polygons: CorridorPolygon[],
   outerRadius: number,
   centerX: number,
   centerY: number,
@@ -412,14 +406,11 @@ function drawCorridors(
   strokeMat: THREE.LineBasicMaterial,
   wallHeight: number,
 ) {
-  // Corridor points are generated in unit-hex-radius space (see corridorFill.ts) -- scale
-  // by the live outerRadius so they land in the same pixel space as hexToPixel(hex,
-  // outerRadius) above, then apply the same centering offset as the hex mesh.
+  // Corridor points are generated in unit-hex-radius space.
+  // Scale by outerRadius for same pixel space as hexToPixel(hex, outerRadius), then apply the same centering offset as the hex mesh.
   const toLocal = (p: { x: number; y: number }) => ({ x: p.x * outerRadius - centerX, z: p.y * outerRadius - centerY })
 
-  // Batches one wall mesh's worth of triangles for a single closed ring (outer boundary or
-  // one hole), rather than one mesh per boundary edge -- these outlines can have 500-1500+
-  // points, and a separate THREE.Mesh per edge at that count would tank frame rate.
+  // Batches one wall mesh's worth of triangles for a single closed ring, rather than one mesh per boundary edge.
   function addWallRing(pts: { x: number; z: number }[]) {
     const wallVerts: number[] = []
     for (let i = 0; i < pts.length; i++) {
@@ -448,7 +439,7 @@ function drawCorridors(
     scene.add(line)
   }
 
-  for (const polygon of (dungeon.metadata?.corridors ?? []) as CorridorPolygon[]) {
+  for (const polygon of polygons) {
     if (polygon.outer.length < 3) continue
 
     const outerPts = polygon.outer.map(toLocal)
@@ -473,8 +464,7 @@ function drawCorridors(
     fillMesh.userData['isDungeonHex'] = true
     scene.add(fillMesh)
 
-    // Outer perimeter wall, plus one inner wall ring per hole so the gap actually reads as
-    // an enclosed void rather than just an absence of floor.
+    // Outer perimeter wall, plus one inner wall ring per hole --> gap reads as an enclosed void rather than just an absence of floor.
     addWallRing(outerPts)
     for (const hole of holePts) addWallRing(hole)
   }

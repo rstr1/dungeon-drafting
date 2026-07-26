@@ -7,6 +7,7 @@ export type ProjectConfig = {
     params: Record<string, number | boolean>
     palette: Palette
     wallHeightFraction: number
+    cameraFov?: number
     roomTemplates: RoomTemplate[]
 }
 
@@ -46,6 +47,7 @@ function isProjectConfig(value: unknown): value is ProjectConfig {
     typeof v.params              === 'object' &&     v.params !== null &&
     typeof v.palette             === 'object' &&     v.palette !== null &&
     typeof v.wallHeightFraction  === 'number' &&
+    (v.cameraFov === undefined || typeof v.cameraFov === 'number') &&
     Array.isArray(v.roomTemplates)
   )
 }

@@ -86,13 +86,32 @@ function makeUnionFind(size: number) {
   return { union }
 }
 
+// Picks which discarded Delauney edges become loops.
+// This guarantees at least one loop whenever a discarded edge exists.
+// Additional loops are added via loopChance.
+function selectLoopEdges(leftoverEdges: Edge[], rand: () => number, loopChance: number): Edge[] {
+  if (leftoverEdges.length === 0) return []
+
+  // Seeded Fisher-Yates so which edge lands the guaranteed slot varies by seed
+  const shuffled = [...leftoverEdges]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1))
+    const tmp = shuffled[i]
+    shuffled[i] = shuffled[j]
+    shuffled[j] = tmp
+  }
+  const guaranteedCount = Math.min(1, shuffled.length)
+  const guaranteed = shuffled.slice(0, guaranteedCount)
+  const rest = shuffled.slice(guaranteedCount).filter(() => rand() < loopChance)
+  return [...guaranteed, ...rest]
+}
 
 //---------------------------------------//
 //  Build Graph                          //
 //---------------------------------------//
 // rooms         --> DungeonMap.metadata.rooms (order defines the indices used in the returned Connections)
 // rand          --> seeded RNG
-// loopChance    --> fraction of discarded edges added back for cycles
+// loopChance    --> fraction of discarded edges (aside from guaranteed loop) added back for extra cycles
 
 export function buildConnectionGraph(
     rooms: RoomLike[],
@@ -153,8 +172,10 @@ export function buildConnectionGraph(
         }
     }
 
-    // Loop edges --> reintroduce some discarded edges
-    const loopEdges = leftoverEdges.filter(() => rand() < loopChance)
+    // Loop edges --> reintroduce some discarded edges to create cycles
+    // Delinearises the map to make it more interesting.
+    // Also allows for potential looping/kiting of enemies.
+    const loopEdges = selectLoopEdges(leftoverEdges, rand, loopChance)
 
     return [...mstEdges, ...loopEdges].map(edge => toConnection(nodes, edge))
 }
