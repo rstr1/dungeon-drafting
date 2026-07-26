@@ -34,6 +34,34 @@ const DEFAULT_ROOM_TEMPLATES: RoomTemplate[] = [
     entrances: [{ cell: { q: 0, r: 0 }, direction: 0 }],
     guaranteed: true,
   },
+  {
+    id: 'small-zig',
+    name: 'Small Zig',
+    tag: 'small',
+    cells: [{ q: 0, r: 0 }, { q: -1, r: 0 }, { q: 0, r: -1 }, { q: -1, r: -1 }],
+    entrances: [
+      { cell: { q: 0, r: 0 }, direction: 3 },
+      { cell: { q: -1, r: -1 }, direction: 0 },
+    ],
+    guaranteed: false,
+    weight: 2,
+  },
+  {
+    id: 'large-hex',
+    name: 'Elevator Room',
+    tag: 'large',
+    cells: [
+      { q: 0, r: 0 }, { q: -1, r: 1 }, { q: 0, r: 1 }, { q: 1, r: 0 }, { q: 1, r: -1 }, { q: 0, r: -1 }, { q: -1, r: 0 }, { q: -1, r: 2 }, { q: 1, r: 1 },
+      { q: 0, r: 2 }, { q: 2, r: 0 }, { q: 2, r: -1 }, { q: 2, r: -2 }, { q: 0, r: -2 }, { q: -1, r: -1 }, { q: -2, r: 0 }, { q: -2, r: 1 },
+      { q: -2, r: 2 }, { q: 1, r: -2 },
+    ],
+    entrances: [
+      { cell: { q: 0, r: 2 }, direction: 3 },
+      { cell: { q: 0, r: -2 }, direction: 0 },
+    ],
+    guaranteed: false,
+    weight: 1,
+  },
 ]
 
 // Builds a params object from algorithm's param definitions
@@ -160,6 +188,10 @@ export default function App() {
       const config = await importConfig(file)
       const next = ALGORITHMS.find(a => a.id === config.algorithmId)
       if (next) {
+        // A preset saved before some param existed simply won't have that key
+        // in its JSON (JSON.stringify drops undefined rather than keeping the
+        // key) -- merging onto current defaults fills the gap instead of
+        // leaving it missing, which downstream code reads as undefined.
         const mergedParams = { ...buildDefaultParams(next), ...config.params }
         setSelectedId(next.id)
         setParams(mergedParams)
